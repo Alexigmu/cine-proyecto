@@ -1,2 +1,2 @@
 # cine-proyecto
-royecto de prácticas: ingesta de datos de TMDb, persistencia en MongoDB, API REST
+Proyecto de prácticas: ingesta de datos de TMDb, persistencia en MongoDB, API REST
