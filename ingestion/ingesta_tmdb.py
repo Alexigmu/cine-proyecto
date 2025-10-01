@@ -1,7 +1,8 @@
 import requests
 import pymongo
+import os
 
-API_KEY = "e2c0b4c233e5529a10608d772dab9753"
+API_KEY = os.environment.get("TMDB_API_KEY", "TU_API_KEY_POR_DEFECTO")
 URL = f"https://api.themoviedb.org/3/trending/movie/week?api_key={API_KEY}"
 
 def seleccionar_campos(pelicula: dict) -> dict: #Devuelve solo los campos que hemos decidido guardar
@@ -27,7 +28,7 @@ def main():
     peliculas = data.get("results", [])
 
     # 2) Conectar a MongoDB
-    cliente = pymongo.MongoClient("mongodb://localhost:27017")
+    cliente = pymongo.MongoClient("mongodb://mongo:27017")
     db = cliente["cine"]
     coleccion = db["peliculas"]
 
