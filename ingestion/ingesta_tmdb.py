@@ -2,7 +2,7 @@ import requests
 import pymongo
 import os
 
-API_KEY = os.environment.get("TMDB_API_KEY", "TU_API_KEY_POR_DEFECTO")
+API_KEY = os.environ.get("TMDB_API_KEY", "TU_API_KEY_POR_DEFECTO")
 URL = f"https://api.themoviedb.org/3/trending/movie/week?api_key={API_KEY}"
 
 def seleccionar_campos(pelicula: dict) -> dict: #Devuelve solo los campos que hemos decidido guardar

@@ -1,7 +1,6 @@
 services:
   mongo:
     image: mongo:6
-    container_name: cine_mongo
     ports:
       - "27017:27017"
     volumes:
@@ -9,7 +8,6 @@ services:
 
   mongo-express:
     image: mongo-express:1.0.2-20
-    container_name: mongo-express
     depends_on:
       - mongo
     environment:
@@ -21,18 +19,26 @@ services:
     ports:
       - "8081:8081"
   
+  api:
+    build: ./api
+    environment:
+      - PORT=3000
+      - MONGO_URL=mongodb://mongo:27017
+      - MONGO_DB=cine
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+  
   ingestion:
     build:
       context: ./ingestion #Busca el Dockerfile en esta carpeta
       dockerfile: Dockerfile
-    container_name: ingestion
     depends_on:
       - mongo #Asegura que MongoDB esté listo
     environment: #Inyectamos la API Key de forma segura
       - TMDB_API_KEY=e2c0b4c233e5529a10608d772dab9753
-    #Cuando el script termine (la ingesta solo se ejecuta 1 vez)
-    #simplemente se detenga.
-    restart: "no"
+    profiles: ["manual"]
 
 volumes:
   mongo_data:
