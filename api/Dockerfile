@@ -1,30 +1,18 @@
-# 1. IMAGEN BASE
 FROM node:20-slim
-# 2. CONFIGURACIÓN
-# Establece el modo de entorno. Esto lo lee Node.js (Express)
 ENV NODE_ENV=development
-# Establece el directorio de trabajo dentro del contenedor
+#Mover el WORKDIR a la carpeta donde está index.js ***
+WORKDIR /usr/src/app/src 
+#Copia solo los archivos de dependencias. (A la raíz de la API)
+COPY package*.json /usr/src/app/ 
+#Ejecuta npm install en /usr/src/app/. La instalación debe hacerse donde está package.json (la raíz de la API)
 WORKDIR /usr/src/app
-# 3. OPTIMIZACIÓN DE LA CACHÉ
-# Copia solo los archivos de dependencias primero. 
-# Si package.json no cambia, la capa de instalación se cachea (build rápido).
-COPY package*.json ./ 
-# 4. INSTALACIÓN DE DEPENDENCIAS
-# Instala las dependencias de Node.js (incluyendo 'kafkajs')
 RUN npm install
-# 5. INSTALACIÓN DE HERRAMIENTAS ADICIONALES
-# Instalamos 'bash' para poder ejecutar el script de arranque (start.sh) 
-# que lanzará los dos procesos (Servidor y Consumidor)
 RUN apt-get update && apt-get install -y bash --no-install-recommends && rm -rf /var/lib/apt/lists/*
-# 6. CÓDIGO DE APLICACIÓN
-# Copia todo el código de la API (index.js, db.js, consumer.js, etc.)
-COPY . .
-# 7. SCRIPT DE ARRANQUE
-# Copia el script que lanzará los dos procesos en paralelo
-COPY start.sh /usr/src/app/
-# 8. PUERTO (DOCUMENTACIÓN)
-# Informa a Docker de qué puerto usará la aplicación
+#Copiar todos los archivos de la API a la raíz; Copia start.sh, consumer.js, y la carpeta src/ a /usr/src/app/
+COPY . . 
+RUN chmod +x ./start.sh 
+#Volver a establecer el WORKDIR a la carpeta de ejecución de código (src), esencial para que Node pueda ejecutar 'index.js' y 'consumer.js' con rutas relativas simples.
+WORKDIR /usr/src/app/src
 EXPOSE 3000
-# 9. COMANDO DE EJECUCIÓN
-# Ejecuta el script de arranque con bash (que lanzará index.js y consumer.js)
-CMD ["bash", "start.sh"]
+#Usamos '..' para encontrar start.sh; El WORKDIR es /usr/src/app/src, por lo que start.sh está en /usr/src/app (un nivel arriba).
+CMD ["bash", "../start.sh"]

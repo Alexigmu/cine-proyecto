@@ -59,7 +59,7 @@ services:
   
   ingestion:
     build:
-      context: ./ingestion #Busca el Dockerfile en esta carpeta
+      context: ./ingestion
       dockerfile: Dockerfile
     depends_on:
       - mongo

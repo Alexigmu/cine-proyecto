@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CineDuel - El Duelo de Películas</title>
+</head>
+<body>
+    <div id="main-container">
+        <header id="main-header">
+            <h1>CineDuel</h1>
+            <nav>
+                <button id="nav-duel">Duelo</button>
+                <button id="nav-watchlist">Mi Lista</button>
+                <button id="nav-login">Iniciar Sesión</button>
+            </nav>
+        </header>
+            <section id="duel-view">
+                <h2>¿Cuál prefieres?</h2>
+                
+                <div id="movies-container">
+                    <div id="movie-a">
+                        <h3>Título de la Película A</h3>
+                        <p>Año de Estreno: 2023</p>
+                        <p>Puntuación: 8.5/10</p>
+                        <img src="placeholder.jpg" alt="Póster de la Película A" width="200">
+                        <p>Sinopsis corta de la película A...</p>
+                        <button class="vote-button" data-movie-id="123">Votar por A</button>
+                    </div>
+                    <!-- Película B -->
+                    <div id="movie-b">
+                        <h3>Título de la Película B</h3>
+                        <p>Año de Estreno: 2024</p>
+                        <p>Puntuación: 7.9/10</p>
+                        <img src="placeholder2.jpg" alt="Póster de la Película B" width="200">
+                        <p>Sinopsis corta de la película B...</p>
+                        <button class="vote-button" data-movie-id="456">Votar por B</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Otras Vistas (Ocultas inicialmente) -->
+            <section id="watchlist-view" style="display: none;">
+                <h2>Mi Watchlist</h2>
+                <p>Aquí se listarán tus películas favoritas.</p>
+            </section>
+
+            <section id="auth-view" style="display: none;">
+                <h2>Acceso</h2>
+                <form id="login-form">
+                    <label for="username">Usuario:</label>
+                    <input type="text" id="username" name="username">
+                    <label for="password">Contraseña:</label>
+                    <input type="password" id="password" name="password">
+                    <button type="submit">Entrar</button>
+                </form>
+            </section>
+        <footer id="main-footer">
+            <p>&copy; CineDuel. Datos de TMDb.</p>
+        </footer>
+    </div>
+</body>
+</html>
