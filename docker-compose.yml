@@ -67,7 +67,5 @@ services:
     environment:
       - TMDB_API_KEY=e2c0b4c233e5529a10608d772dab9753
       - KAFKA_BROKER=kafka:29092
-    profiles: ["manual"]
-
 volumes:
   mongo_data:
