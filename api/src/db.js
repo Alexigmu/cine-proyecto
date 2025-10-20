@@ -86,7 +86,7 @@ async function findUserByCredentials(username, password) {
 }
 
 // =========================================================================
-// LÓGICA DE NEGOCIO (Duel y Watchlist)
+// LÓGICA (Duel y Watchlist)
 // =========================================================================
 
 // --- Cineduel ---

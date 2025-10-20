@@ -1,121 +1,150 @@
-import requests
-import json
 import os
 import time
-from kafka import KafkaProducer
+import json
+import requests
+from typing import Dict, List, Tuple
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import DuplicateKeyError
 
-API_KEY = os.environ.get("TMDB_API_KEY", "TU_CLAVE_API_AQUI") 
-BASE_URL = "https://api.themoviedb.org/3/discover/movie" 
-KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:29092") 
-TOPIC_NAME = "peliculas_raw"
+# ==============================
+# Configuración (env / defaults)
+# ==============================
+API_KEY   = os.environ.get("TMDB_API_KEY", "TU_CLAVE_API_AQUI")
+BASE_URL  = "https://api.themoviedb.org/3/discover/movie"
+MONGO_URL = os.environ.get("MONGO_URL", "mongodb://mongo:27017")
+MONGO_DB  = os.environ.get("MONGO_DB", "cine")
+COLL_NAME = "peliculas"
 
-PAGES_CALIDAD = 50 # Objetivo: 1000 películas con muchos votos para asegurar películas de calidad.
+# =========================
+# Estrategias de recopilación
+# =========================
+PAGES_CALIDAD = 50  # objetivo: ~1000 pelis con muchos votos
 PARAMS_CALIDAD = {
     "api_key": API_KEY,
     "language": "es-ES",
-    "sort_by": "vote_count.desc", # Priorizar las más votadas
-    "vote_count.gte": 1000,        # Solo incluir si tienen al menos 1000 votos
+    "sort_by": "vote_count.desc",  # prioriza las más votadas
+    "vote_count.gte": 1000,        # solo si tienen al menos 1000 votos
 }
 
-PAGES_ACTUALIDAD = 5 # Solo las primeras 5 páginas de popularidad reciente (100 películas)
-# Ajusta la fecha aquí. Ejemplo: '2025-01-01' para películas estrenadas este año
-FECHA_MINIMA_ESTRENO = "2024-01-01" 
+PAGES_ACTUALIDAD = 5   # primeras 5 páginas de popularidad reciente (~100 pelis)
+FECHA_MINIMA_ESTRENO = "2024-01-01"
 PARAMS_ACTUALIDAD = {
     "api_key": API_KEY,
     "language": "es-ES",
-    "sort_by": "popularity.desc", # Priorizar las más populares
-    "primary_release_date.gte": FECHA_MINIMA_ESTRENO, # Películas recientes
-    # Importante: Quitamos el filtro de vote_count.gte para permitir películas nuevas
+    "sort_by": "popularity.desc",             # prioriza populares
+    "primary_release_date.gte": FECHA_MINIMA_ESTRENO,  # recientes
+    # sin filtro de vote_count para permitir estrenos
 }
 
-
-def seleccionar_campos(pelicula: dict) -> dict: 
-    """Devuelve solo los campos que hemos decidido guardar."""
-    release_date = pelicula.get("release_date", "1900-01-01") 
-    
+# =========================
+# Helpers de transformación
+# =========================
+def seleccionar_campos(pelicula: Dict) -> Dict:
+    """Reduce el documento TMDb a los campos que queremos guardar."""
+    release_date = pelicula.get("release_date", "1900-01-01")
     return {
         "id": pelicula.get("id"),
         "title": pelicula.get("title"),
         "original_title": pelicula.get("original_title"),
         "overview": pelicula.get("overview"),
         "release_date": release_date,
-        "release_year": int(release_date.split('-')[0]) if '-' in release_date else None,
+        "release_year": int(release_date.split("-")[0]) if "-" in release_date else None,
         "genre_ids": pelicula.get("genre_ids", []),
         "vote_average": pelicula.get("vote_average"),
         "popularity": pelicula.get("popularity"),
         "poster_path": pelicula.get("poster_path"),
         "backdrop_path": pelicula.get("backdrop_path"),
         "original_language": pelicula.get("original_language"),
-        # Campo para el CineDuel que la API usará para el ranking
-        "duelos_ganados": 0 
+        # Campo para ranking en CineDuel
+        "duelos_ganados": 0,
     }
 
+# =========================
+# Ingesta + upserts a Mongo
+# =========================
+def fetch_page(params: Dict) -> Tuple[List[Dict], int]:
+    """Pide una página a TMDb y devuelve (lista_peliculas, total_pages_api)."""
+    resp = requests.get(BASE_URL, params=params, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("results", []), int(data.get("total_pages", 1))
 
-def fetch_and_produce(producer, pages_to_fetch, base_params, strategy_name):
-    """Función genérica para iterar sobre páginas y enviar a Kafka."""
-    total_peliculas_enviadas = 0
-    
+def fetch_and_upsert(collection, pages_to_fetch: int, base_params: Dict, strategy_name: str) -> int:
+    """Itera páginas de TMDb, transforma y upserta cada película por 'id'."""
+    total_upserts = 0
+
     for page in range(1, pages_to_fetch + 1):
         params = base_params.copy()
         params["page"] = page
-        
+
         try:
-            resp = requests.get(BASE_URL, params=params, timeout=15)
-            resp.raise_for_status() 
-            data = resp.json()
-            peliculas = data.get("results", [])
-            total_pages_api = data.get("total_pages", 1)
-
-            if not peliculas:
-                print(f"[INFO - {strategy_name}] Página {page} vacía. Fin de la ingesta.")
-                break
-                
-            for p in peliculas:
-                doc = seleccionar_campos(p)
-                producer.send(TOPIC_NAME, value=doc)
-                total_peliculas_enviadas += 1
-
-            print(f"[{strategy_name}] Página {page}/{min(pages_to_fetch, total_pages_api)} procesada. Enviadas: {total_peliculas_enviadas}")
-
-            # Parada para evitar sobrecargar la API de TMDb
-            time.sleep(0.5) 
-            
-            if page >= total_pages_api:
-                print(f"[INFO - {strategy_name}] Alcanzada la última página disponible de TMDb.")
-                break
-
+            peliculas, total_pages_api = fetch_page(params)
         except requests.exceptions.RequestException as e:
-            print(f"[ERROR TMDb - {strategy_name}] Error al obtener datos de la página {page}: {e}")
+            print(f"[ERROR TMDb - {strategy_name}] Página {page}: {e}")
             break
 
-    return total_peliculas_enviadas
+        if not peliculas:
+            print(f"[INFO - {strategy_name}] Página {page} vacía. Fin.")
+            break
 
+        for p in peliculas:
+            doc = seleccionar_campos(p)
+            if doc.get("id") is None:
+                continue  # descarta registros sin id TMDb
+
+            # upsert por id
+            res = collection.update_one(
+                {"id": doc["id"]},
+                {"$set": doc},
+                upsert=True
+            )
+            # Contabilizamos si insertó o actualizó algo
+            if res.upserted_id is not None or res.modified_count > 0:
+                total_upserts += 1
+
+        print(f"[{strategy_name}] Página {page}/{min(pages_to_fetch, total_pages_api)} procesada. Upserts acumulados: {total_upserts}")
+
+        # Throttling para respetar API TMDb
+        time.sleep(0.5)
+
+        if page >= total_pages_api:
+            print(f"[INFO - {strategy_name}] Alcanzada la última página disponible en TMDb ({total_pages_api}).")
+            break
+
+    return total_upserts
+
+# =========================
+# Main
+# =========================
 def main():
+    # 1) Conexión a Mongo
+    client = MongoClient(MONGO_URL)
+    db = client[MONGO_DB]
+    coll = db[COLL_NAME]
+
+    # 2) Índice único por 'id' (si no existe)
+    #    Evita duplicados y acelera el upsert
     try:
-        producer = KafkaProducer(
-            bootstrap_servers=[KAFKA_BROKER],
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
-        print(f"[PRODUCTOR] Conectado al broker Kafka: {KAFKA_BROKER}")
-
+        coll.create_index([("id", ASCENDING)], name="uniq_tmdb_id", unique=True)
     except Exception as e:
-        print(f"[ERROR FATAL] No se pudo conectar al broker Kafka: {e}")
-        return
+        print(f"[WARN] No se pudo crear índice único (puede existir): {e}")
 
-    print("==============================================")
+    print(f"[MONGO] Conectado a {MONGO_URL}/{MONGO_DB}, colección '{COLL_NAME}'")
+
+    # 3) Estrategia 1 — Calidad
+    print("=" * 46)
     print("CALIDAD Y CANTIDAD (Base Histórica)")
-    print("==============================================")
-    enviadas_calidad = fetch_and_produce(producer, PAGES_CALIDAD, PARAMS_CALIDAD, "CALIDAD")
-    
-    print("\n==============================================")
+    print("=" * 46)
+    upserts_calidad = fetch_and_upsert(coll, PAGES_CALIDAD, PARAMS_CALIDAD, "CALIDAD")
+
+    # 4) Estrategia 2 — Actualidad
+    print("\n" + "=" * 46)
     print("ACTUALIDAD (Películas Recientes)")
-    print("==============================================")
-    enviadas_actualidad = fetch_and_produce(producer, PAGES_ACTUALIDAD, PARAMS_ACTUALIDAD, "ACTUALIDAD")
+    print("=" * 46)
+    upserts_actualidad = fetch_and_upsert(coll, PAGES_ACTUALIDAD, PARAMS_ACTUALIDAD, "ACTUALIDAD")
 
-    # Sincronizar y cerrar
-    producer.flush() 
-    total_final = enviadas_calidad + enviadas_actualidad
-    print(f"\n[FINAL] Tarea completada. Total de películas enviadas a Kafka: {total_final}.")
+    total = upserts_calidad + upserts_actualidad
+    print(f"\n[FINAL] Tarea completada. Total de upserts aplicados: {total}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
